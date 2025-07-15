@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<title>Planet Dog – baseline-aligned & mole obstacle</title>
+<style>
+  html,body{margin:0;padding:0;overflow:hidden;background:#000}
+  canvas{display:block;background:#000}
+</style></head><body>
+<canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),g=c.getContext('2d');
+function fit(){c.width=innerWidth;c.height=innerHeight;}fit();addEventListener('resize',fit);
+
+const R=150;
+const load=s=>new Promise(r=>{const i=new Image();i.onload=_=>r(i);i.src=s;});
+function baseline(img){
+  const off=document.createElement('canvas');off.width=img.width;off.height=img.height;
+  const ctx=off.getContext('2d');ctx.drawImage(img,0,0);
+  const d=ctx.getImageData(0,0,img.width,img.height).data;
+  for(let y=img.height-1;y>=0;--y){for(let x=0;x<img.width;++x)
+    if(d[(y*img.width+x)*4+3]) return y;}
+  return img.height-1;
+}
+const rim=(ang,dist)=>[c.width/2+Math.cos(ang)*dist,c.height/2+Math.sin(ang)*dist];
+
+Promise.all([
+  load('space_background_9x16.png'),
+  load('planet.png'),
+  load('spike1.png'),
+  load('mole.png'),
+  ...Array.from({length:6},(_,i)=>load(`run_cycle_frames/dog_run_${i+1}.png`)),
+  ...Array.from({length:6},(_,i)=>load(`run_cycle_frames/alien_run_${i+1}.png`))
+]).then(([bg,planet,spike,moleImg,...frames])=>{
+  const dogFrames=frames.slice(0,6), alienFrames=frames.slice(6);
+  const bl={ spike:baseline(spike), mole:baseline(moleImg) };
+  dogFrames.forEach(i=>bl[i.src]=baseline(i));
+  alienFrames.forEach(i=>bl[i.src]=baseline(i));
+
+  let dogA=Math.PI/2, alienA=Math.PI, vA=0, jump=0, frame=0;
+  const keys={};onkeydown=e=>keys[e.code]=1;onkeyup=e=>keys[e.code]=0;
+  const spikes=[], moles=[]; setInterval(()=>spikes.push({a:Math.random()*6.283}),2500);
+  setInterval(()=>{moles.push({ang:Math.random()*6.283,phase:0,off:-48})},4000);
+
+  function draw(img,ang,dist,flip=0){
+    const sc=64/img.height, w=img.width*sc, h=img.height*sc;
+    const [bx,by]=rim(ang,dist); g.save(); g.translate(bx,by); g.rotate(ang+Math.PI/2);
+    if(flip)g.scale(-1,1); const dy=-h+(h-bl[img.src]*sc); g.drawImage(img,-w/2,dy,w,h); g.restore();
+  }
+
+  (function loop(){
+    vA = keys.ArrowLeft?-0.03 : keys.ArrowRight?0.03 : 0;
+    if(keys.Space&&!jump)jump=22; if(jump){jump-=0.35;if(jump<0)jump=0;}
+    dogA+=vA; alienA+=0.012;
+
+    moles.forEach(m=>{ if(m.phase===0){m.off+=1.5;if(m.off>=0){m.off=0;m.phase=1;m.t=60}}
+                       else if(m.phase===1&&--m.t<=0)m.phase=2;
+                       else if(m.phase===2){m.off-=1.5;}});
+    for(let i=moles.length-1;i>=0;--i) if(moles[i].off<-48) moles.splice(i,1);
+
+    g.clearRect(0,0,c.width,c.height);
+    bg&&g.drawImage(bg,0,0,c.width,c.height);
+    const [cx,cy]=[c.width/2,c.height/2]; g.drawImage(planet,cx-R,cy-R,R*2,R*2);
+    spikes.forEach(s=>draw(spike,s.a,R)); moles.forEach(m=>draw(moleImg,m.ang,R+m.off));
+    draw(dogFrames[(frame>>2)%6],dogA,R+jump,vA<0);
+    draw(alienFrames[(frame>>2)%6],alienA,R, ((alienA-dogA+6.283)%6.283)>Math.PI);
+    frame++;requestAnimationFrame(loop);
+  })();
+});
+</script>
+</body></html>
